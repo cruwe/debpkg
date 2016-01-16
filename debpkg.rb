@@ -96,9 +96,8 @@ def audit
             else
               description = 'No description available.'
             end
-            puts 'alerting for package ' + pkgdata['Section'] + '/' + pkgname + ' : ' +
-                     'Vulnerability ' + vulnid + ' is described as follows: ' +
-                     description + "\n\n"
+            puts pkgdata['compkey'] + ' ; ' + vulnid + ' ; ' +
+                     description + "\n"
           end
         end
       end
