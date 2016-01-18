@@ -1,12 +1,10 @@
 require 'rubygems'
 require 'json'
-require 'versionomy'
-
 
 #-----------------------------------------------------------------------------
 CMD    = $PROGRAM_NAME.split('/').last
 subcmd = 'usage'
-USAGE = <<EOT
+USAGE  = <<EOT
 Usage: #{CMD} SUBCOMMAND [ARGUMENTS]
 
   where SUBCOMMAND is one of the following
@@ -14,6 +12,74 @@ Usage: #{CMD} SUBCOMMAND [ARGUMENTS]
   \t leaves
   \t usage
 EOT
+#-----------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------
+def verssplit(versstring,pkgdata,vulnspec)
+  if versstring.nil?
+    puts 'breakpoint'
+  end
+
+  if versstring.include?(':')
+    versstring.gsub!(':', '.')
+  else
+    versstring = '0.' + versstring
+  end
+
+  unless versstring =~ /\+|~/
+    versstring = versstring + "~0"
+  end
+
+  versstring = versstring.split(/\+|~|-/)
+
+  vers = []
+  versstring[0].split('.').each do |part|
+    vers.push(part.to_i)
+  end
+
+  if vers.length == 3
+    vers.push(0)
+  end
+
+  return vers
+end
+
+#verssplit(vers)
+#-----------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------
+def array_geq(left, right)
+  if left.length == 1
+    return (left[0] >= right[0])
+  else
+    if (left[0] == right[0])
+      res = array_geq(left.drop(1), right.drop(1))
+      return res
+    else
+      res = (left[0] >= right[0])
+      return res
+    end
+  end
+end
+
+#array_geq(left, right)
+#-----------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------
+def version_geq(pkgdata, vulnspec, left, right)
+  nleft  = verssplit(left,pkgdata,vulnspec)
+  nright = verssplit(right,pkgdata,vulnspec)
+
+  if nleft.length != nright.length
+    #puts 'unclear version semantics for pkg ' + pkgname + ': ' +
+    #         nleft.to_s + " ? " + nright.to_s + '. Aborting.'
+    return 'invalid'
+  else
+    return array_geq(nleft, nright)
+  end
+end
+
+#version_geq(left, right)
 #-----------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------
@@ -64,10 +130,12 @@ def populate
     end
   end
 
-  pkgs = pkgs.sort_by { |k,v| v['compkey'] }
+  pkgs = pkgs.sort_by { |k, v| v['compkey'] }
 
   return pkgs.to_h
-end # populate()
+end
+
+# populate()
 #-----------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------
@@ -75,7 +143,7 @@ def audit
   pkgs = populate
 
   vulnstr = File.read('/home/cjr/tmp/debiansec')
-  vulnstr.gsub!(/fixed_version/,'fixedversion')
+  vulnstr.gsub!(/fixed_version/, 'fixedversion')
   vulns = JSON.parse(vulnstr)
 
   pkgs.each_pair do |pkgname, pkgdata|
@@ -84,27 +152,50 @@ def audit
     if vulns.has_key?(pkgsrc)
 
       vulns[pkgsrc].each do |vuln|
-        vulnid = vuln[0]
-        vulndescr = vuln[1]
+        vulnid    = vuln[0]
+        vulnspec = vuln[1]
 
-        if vulndescr['releases'].has_key?('jessie')
-          probability = vulndescr['releases']['jessie']
+        if vulnspec['releases'].has_key?('jessie')
+          probability = vulnspec['releases']['jessie']
 
-          if probability['status'] == "open"
-            if vulndescr.has_key?('description')
-              description= vulndescr['description']
+          if probability['status'] == 'open'
+            if vulnspec.has_key?('description')
+              description= vulnspec['description']
             else
               description = 'No description available.'
             end
             puts pkgdata['compkey'] + ' ; ' + vulnid + ' ; ' +
                      description + "\n"
+          elsif probability['status'] == 'undetermined'
+            puts pkgdata['compkey'] + ' ; ' + vulnid + ' ; ' +
+                     "undetermined\n"
+          # else # then probability['status'] == "resolved"
+          # -----------------------------------------------
+          # this code will not work because of countless exceptions to the
+          # versioning semantics as described in deb-version(5)
+          # until I have an idea how to compare versions of different length,
+          # this function cannot be completedq
+          #   fixvstr = vulnspec['releases']['jessie']['fixedversion']
+          #   curvstr = pkgdata['Version']
+          #
+          #   # if pkgname == 'xserver-common'
+          #   #   puts 'breakpoint'
+          #   # end
+          #
+          #   fixed = version_geq(pkgs[pkgname],vulnspec, curvstr, fixvstr)
+          #   if fixed == false
+          #     puts pkgdata['compkey'] + ' vulnerable, patch available, fix it!'
+          #   end
+
           end
         end
       end
     end
   end
 
-end # audit()
+end
+
+# audit()
 #-----------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------
@@ -117,10 +208,13 @@ def leaves
                pkgdata['Description']
     end
   end
-end # leaves()
+end
+
+# leaves()
 #-----------------------------------------------------------------------------
 
-unless (ARGV.empty? || ARGV[0].start_with?('-'))
+unless (ARGV.empty? ||
+    ARGV[0].start_with?('-'))
   subcmd = ARGV.shift
 end
 
